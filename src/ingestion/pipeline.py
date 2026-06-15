@@ -14,7 +14,7 @@ from ingestion.chunking import DocumentChunker
 from ingestion.embedding import BatchProcessor
 from ingestion.storage import BM25Indexer, ImageStorage, VectorUpserter
 from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
-from libs.loader import BaseLoader, FileIntegrityChecker, PdfLoader, SQLiteIntegrityChecker
+from libs.loader import BaseLoader, FileIntegrityChecker, PdfLoader, SQLiteIntegrityChecker, TextLoader
 
 
 class IngestionPipelineError(RuntimeError):
@@ -53,7 +53,7 @@ class IngestionPipeline:
         self,
         settings: Settings,
         *,
-        integrity_checker: Optional[FileIntegrityChecker] = None,
+        integrity_checker: Optional[FileIntegrityChecker] = None,#去重检查
         loader: Optional[BaseLoader] = None,
         chunker: Optional[DocumentChunker] = None,
         transforms: Optional[Sequence[Callable[[List[Chunk], Optional[TraceContext]], List[Chunk]]]] = None,
@@ -200,17 +200,25 @@ class IngestionPipeline:
         except Exception as exc:  # noqa: BLE001
             raise IngestionPipelineError(stage, file_path, str(exc)) from exc
 
+    def _get_loader_for_file(self, file_path: str) -> BaseLoader:
+        """Select the appropriate loader based on file extension."""
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".pdf":
+            return self._loader  # use the configured PdfLoader
+        return TextLoader()
+
     def _stage_load(self, file_path: str, trace: TraceContext) -> Document:
         stage = "load"
         t0 = time.monotonic()
         try:
-            document = self._loader.load(file_path, trace=trace)
+            loader = self._get_loader_for_file(file_path)
+            document = loader.load(file_path, trace=trace)
             trace.record_stage(
                 stage,
                 doc_id=document.id,
                 text_chars=len(document.text),
                 elapsed_ms=(time.monotonic() - t0) * 1000.0,
-                method=getattr(self._loader, "__class__", type(self._loader)).__name__,
+                method=type(loader).__name__,
             )
             return document
         except Exception as exc:  # noqa: BLE001

@@ -7,6 +7,7 @@ from .file_integrity import (
     SQLiteIntegrityChecker,
 )
 from .pdf_loader import PdfLoader
+from .text_loader import TEXT_EXTENSIONS, TextLoader
 
 __all__ = [
     "BaseLoader",
@@ -14,4 +15,6 @@ __all__ = [
     "FileIntegrityChecker",
     "PdfLoader",
     "SQLiteIntegrityChecker",
+    "TEXT_EXTENSIONS",
+    "TextLoader",
 ]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, Dict, List
 
 from core.query_engine import (
     DenseRetriever,
@@ -15,7 +15,18 @@ from core.query_engine import (
 from core.response import ResponseBuilder
 from core.settings import load_settings
 from core.types import RetrievalResult
+from libs.vector_store import VectorStoreFactory, VectorStoreSettings
 
+
+def _create_vector_store(settings: Any, collection: str):
+    """Create a vector store targeting a specific collection."""
+    return VectorStoreFactory.create(
+        VectorStoreSettings(
+            provider=settings.vector_store.provider,
+            persist_directory=settings.vector_store.persist_directory,
+            collection_name=collection,
+        )
+    )
 
 
 def query_knowledge_hub(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -29,13 +40,21 @@ def query_knowledge_hub(arguments: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("top_k must be positive")
     top_k = min(top_k, 20)
 
+    collection = str(arguments.get("collection", "")).strip()
+
     builder = ResponseBuilder()
 
     try:
         settings = load_settings()
+
+        # If a specific collection is requested, create store for that collection
+        vector_store = None
+        if collection:
+            vector_store = _create_vector_store(settings, collection)
+
         query_processor = QueryProcessor()
-        dense = DenseRetriever(settings=settings)
-        sparse = SparseRetriever(settings=settings)
+        dense = DenseRetriever(settings=settings, vector_store=vector_store)
+        sparse = SparseRetriever(settings=settings, vector_store=vector_store)
         fusion = Fusion(settings=settings)
         hybrid = HybridSearch(
             settings=settings,
