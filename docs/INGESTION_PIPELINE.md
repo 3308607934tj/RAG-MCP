@@ -23,7 +23,7 @@ graph TD
     S1 -->|"new"| S2
     S1 -.->|"dup"| SKIP["Skipped"]
 
-    S2["<b>② Load</b><br/>PdfLoader → pypdf<br/>输出: <b>Document</b><br/>├─ id (SHA256)<br/>├─ text + [IMAGE:xxx]<br/>└─ metadata.images[]"]
+    S2["<b>② Load</b><br/>PdfLoader → MarkItDown + pypdf (images)<br/>输出: <b>Document</b> (canonical Markdown)<br/>├─ id (SHA256)<br/>├─ text (Markdown) + [IMAGE:xxx]<br/>└─ metadata.images[]"]
     S2 --> S3
 
     S3["<b>③ Split</b><br/>RecursiveCharacterSplitter<br/>chunk_size=1000 / overlap=200<br/>输出: List[<b>Chunk</b>]<br/>├─ id, text, metadata<br/>├─ chunk_index, source_ref<br/>└─ image_refs (按占位符分发)"]
@@ -132,22 +132,24 @@ graph TD
 
 ---
 
-### 2.2 ② Load — PDF → Document
+### 2.2 ② Load — PDF → Document (canonical Markdown)
 
-PdfLoader 调用 pypdf，逐页解析 PDF。
+PdfLoader 使用 **MarkItDown** 将 PDF 转为规范化 Markdown，同时可选使用 **pypdf** 提取嵌入图片。
 
 ```mermaid
 graph TD
-    PDF["PDF: 120 pages"] --> T & I
+    PDF["PDF: 120 pages"] --> MD & IMG
 
-    T["extract_text()\n逐页提取文字\n图片位置插 IMAGE:xxx 占位符"]
-    I["extract_images()\n逐页提取图片为临时文件\n失败仅 log warning"]
-    T & I --> V["validate_document_contract()\n校验 source_path, page_count"]
+    MD["MarkItDown.convert()\nPDF → canonical Markdown\n保留标题/列表/代码块结构"]
+    IMG["pypdf (secondary)\n逐页提取图片二进制\n失败仅 log warning"]
+    MD --> NORM["_normalise_markdown_image_refs()\n![]() → [IMAGE:xxx] 占位符"]
+    IMG --> MERGE["合并去重\n追加未引用图片占位符"]
 
-    V --> DOC["<b>Document</b>\nid = 'e5042c0e...' (SHA256)\ntext + [IMAGE:xxx] 占位符\nmetadata.page_count = 120\nmetadata.images[] = 120 项\n  ├─ id: 'img_001'\n  ├─ path: 临时文件路径\n  ├─ page: 页码\n  └─ position: 文字偏移"]
+    NORM & MERGE --> V["validate_document_contract()\n校验 source_path, images"]
+    V --> DOC["<b>Document</b>\nid = 'e5042c0e...' (SHA256)\ntext: canonical Markdown + [IMAGE:xxx]\nmetadata.doc_type = 'pdf'\nmetadata.page_count = 120\nmetadata.images[] = 120 项\n  ├─ id: 'img_001'\n  ├─ path: repo-relative 路径\n  ├─ page: 页码\n  └─ source: 'markitdown' | 'pypdf'"]
 ```
 
-**苹果文件**：120 页文字 + 120 张图 → 1 个 Document。
+**苹果文件**：120 页 → MarkItDown 转 Markdown + pypdf 提取 120 张图 → 1 个 Document。
 
 ---
 
@@ -364,7 +366,7 @@ result = pipeline.run("file.pdf", collection="my_collection")
 | [bm25_indexer.py](src/ingestion/storage/bm25_indexer.py) | 关键词索引 |
 | [image_storage.py](src/ingestion/storage/image_storage.py) | 图片归档 |
 | [document_manager.py](src/ingestion/document_manager.py) | 文档管理 |
-| [pdf_loader.py](src/libs/loader/pdf_loader.py) | PDF 解析 |
+| [pdf_loader.py](src/libs/loader/pdf_loader.py) | PDF 解析 (MarkItDown + pypdf images) |
 | [file_integrity.py](src/libs/loader/file_integrity.py) | 文件去重 |
 | [chroma_store.py](src/libs/vector_store/chroma_store.py) | 向量库 + 集合名编解码 |
 | [settings.yaml](config/settings.yaml) | 全部配置 |

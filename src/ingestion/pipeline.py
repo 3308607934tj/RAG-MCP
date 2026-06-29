@@ -12,6 +12,7 @@ from core.trace.trace_context import TraceContext
 from core.types import Chunk, ChunkRecord, Document
 from ingestion.chunking import DocumentChunker
 from ingestion.embedding import BatchProcessor
+from ingestion.quality import DocumentQualityChecker, DocumentRejectedError
 from ingestion.storage import BM25Indexer, ImageStorage, VectorUpserter
 from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
 from libs.loader import BaseLoader, FileIntegrityChecker, PdfLoader, SQLiteIntegrityChecker, TextLoader
@@ -37,6 +38,8 @@ class IngestionResult:
     chunk_count: int
     record_count: int
     image_count: int
+    rejected: bool = False
+    reject_reason: str = ""
 
 
 # Signature for the on_progress callback (F5).
@@ -55,6 +58,7 @@ class IngestionPipeline:
         *,
         integrity_checker: Optional[FileIntegrityChecker] = None,#去重检查
         loader: Optional[BaseLoader] = None,
+        quality_checker: Optional[DocumentQualityChecker] = None,
         chunker: Optional[DocumentChunker] = None,
         transforms: Optional[Sequence[Callable[[List[Chunk], Optional[TraceContext]], List[Chunk]]]] = None,
         batch_processor: Optional[BatchProcessor] = None,
@@ -68,6 +72,9 @@ class IngestionPipeline:
         self._settings = settings
         self._integrity_checker = integrity_checker or SQLiteIntegrityChecker()
         self._loader = loader or PdfLoader()
+        self._quality_checker = quality_checker or DocumentQualityChecker(
+            settings.ingestion.quality_check
+        )
         self._chunker = chunker or DocumentChunker(settings)
         self._transforms = list(transforms) if transforms is not None else [
             ChunkRefiner(settings),
@@ -122,6 +129,39 @@ class IngestionPipeline:
             )
 
         try:
+            # ── Layer-1 quality gate: reject unreadable PDFs early ─────
+            _fire(on_progress, "quality_check", 0, 1)
+            suffix = Path(resolved_file).suffix.lower()
+            if suffix == ".pdf":
+                try:
+                    qc_result = self._stage_quality_check(resolved_file, trace_ctx)
+                    _fire(on_progress, "quality_check", 1, 1)
+                except DocumentRejectedError as rejected:
+                    trace_ctx.record_stage(
+                        "quality_rejected",
+                        file_path=resolved_file,
+                        valid_char_ratio=rejected.result.valid_char_ratio,
+                        text_density=rejected.result.text_density,
+                    )
+                    self._integrity_checker.mark_failed(
+                        file_hash=file_hash,
+                        file_path=resolved_file,
+                        error_msg=str(rejected),
+                    )
+                    return IngestionResult(
+                        file_path=resolved_file,
+                        file_hash=file_hash,
+                        skipped=False,
+                        doc_id="",
+                        chunk_count=0,
+                        record_count=0,
+                        image_count=0,
+                        rejected=True,
+                        reject_reason=str(rejected),
+                    )
+            else:
+                _fire(on_progress, "quality_check", 1, 1)
+
             _fire(on_progress, "load", 0, 1)
             document = self._stage_load(resolved_file, trace_ctx)
             _fire(on_progress, "load", 1, 1)
@@ -199,6 +239,21 @@ class IngestionPipeline:
             return None if should_skip else file_hash
         except Exception as exc:  # noqa: BLE001
             raise IngestionPipelineError(stage, file_path, str(exc)) from exc
+
+    def _stage_quality_check(self, file_path: str, trace: TraceContext) -> Any:
+        """Run pre-ingestion document quality gate (Layer-1)."""
+        stage = "quality_check"
+        t0 = time.monotonic()
+        result = self._quality_checker.check(file_path)
+        trace.record_stage(
+            stage,
+            passed=result.passed,
+            valid_char_ratio=round(result.valid_char_ratio, 4),
+            text_density=round(result.text_density, 4),
+            sampled_pages=result.sampled_pages,
+            elapsed_ms=(time.monotonic() - t0) * 1000.0,
+        )
+        return result
 
     def _get_loader_for_file(self, file_path: str) -> BaseLoader:
         """Select the appropriate loader based on file extension."""

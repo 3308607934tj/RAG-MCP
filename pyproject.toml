@@ -18,7 +18,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "numpy>=1.21.0",
     "pandas>=1.5.0",
-    "pypdf>=3.0.0",
+    "markitdown>=0.1.0",
     "python-multipart>=0.0.5",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0"
@@ -33,6 +33,7 @@ dev = [
     "flake8>=6.0.0",
     "mypy>=1.5.0"
 ]
+pdf-images = ["pypdf>=3.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -360,6 +360,21 @@ class ImageCaptionerSettings:
 
 
 @dataclass(frozen=True)
+class QualityCheckSettings:
+    """Pre-ingestion document quality gate.
+
+    Samples the first *sample_pages* via pypdf and computes a valid-character
+    ratio.  Documents whose ratio falls below *min_valid_char_ratio* are
+    rejected before loading, keeping garbage out of the pipeline entirely.
+    """
+
+    enabled: bool = True
+    sample_pages: int = 3
+    min_valid_char_ratio: float = 0.25
+    min_text_density: float = 0.1
+
+
+@dataclass(frozen=True)
 class IngestionSettings:
     """Ingestion pipeline configuration."""
 
@@ -370,6 +385,7 @@ class IngestionSettings:
     chunk_refiner: Optional[ChunkRefinerSettings] = None
     metadata_enricher: Optional[MetadataEnricherSettings] = None
     image_captioner: Optional[ImageCaptionerSettings] = None
+    quality_check: Optional[QualityCheckSettings] = None
 
 
 @dataclass(frozen=True)
@@ -440,6 +456,21 @@ class Settings:
                         ic, "use_vision_llm", "ingestion.image_captioner"
                     ),
                 )
+            quality_check: Optional[QualityCheckSettings] = None
+            if "quality_check" in ingestion and ingestion["quality_check"] is not None:
+                qc = ingestion["quality_check"]
+                if not isinstance(qc, dict):
+                    raise SettingsError("ingestion.quality_check must be a mapping when present")
+                quality_check = QualityCheckSettings(
+                    enabled=_require_bool(qc, "enabled", "ingestion.quality_check"),
+                    sample_pages=_require_int(qc, "sample_pages", "ingestion.quality_check"),
+                    min_valid_char_ratio=_require_number(
+                        qc, "min_valid_char_ratio", "ingestion.quality_check"
+                    ),
+                    min_text_density=_require_number(
+                        qc, "min_text_density", "ingestion.quality_check"
+                    ),
+                )
             ingestion_settings = IngestionSettings(
                 chunk_size=_require_int(ingestion, "chunk_size", "ingestion"),
                 chunk_overlap=_require_int(ingestion, "chunk_overlap", "ingestion"),
@@ -448,6 +479,7 @@ class Settings:
                 chunk_refiner=chunk_refiner,
                 metadata_enricher=metadata_enricher,
                 image_captioner=image_captioner,
+                quality_check=quality_check,
             )
 
         settings = cls(
