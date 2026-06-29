@@ -6,6 +6,7 @@ from .sparse_retriever import SparseRetriever
 from .fusion import Fusion
 from .hybrid_search import HybridSearch
 from .reranker import Reranker
+from .context_expander import ContextExpander
 
 __all__ = [
     "ProcessedQuery",
@@ -15,4 +16,5 @@ __all__ = [
     "Fusion",
     "HybridSearch",
     "Reranker",
+    "ContextExpander",
 ]

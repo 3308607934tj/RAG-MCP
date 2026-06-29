@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from core.query_engine import (
+    ContextExpander,
     DenseRetriever,
     Fusion,
     HybridSearch,
@@ -72,6 +73,10 @@ def query_knowledge_hub(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 candidates=results,
                 top_k=min(top_k, settings.rerank.top_k),
             )
+            # Expand each hit with neighbor chunks for richer LLM context.
+            if vector_store is not None:
+                expander = ContextExpander(vector_store, window_size=1)
+                results = expander.expand(results)
     except Exception as exc:
         from observability.logger import get_logger
         get_logger("query_knowledge_hub").exception("Retrieval failed")

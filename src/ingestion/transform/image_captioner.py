@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from core.settings import Settings
 from core.trace.trace_context import TraceContext
-from core.types import Chunk
+from core.types import Chunk, format_image_placeholder
 from libs.llm.base_vision_llm import BaseVisionLLM
 from libs.llm.base_vision_llm import VisionLLMSettings as LibVisionLLMSettings
 from libs.llm.llm_factory import LLMFactory
@@ -40,6 +40,33 @@ def _lib_vision_settings_from_core(settings: Settings) -> LibVisionLLMSettings:
         max_image_size=int(v.max_image_size),
         enabled=bool(v.enabled),
     )
+
+
+def _inject_captions_into_text(text: str, captions: Dict[str, str]) -> str:
+    """Replace each ``[IMAGE: {id}]`` placeholder with itself plus a
+    ``[图片描述: {caption}]`` suffix so the caption is embedded for retrieval.
+
+    Placeholders that do not match any caption key are left unchanged.
+    If *text* contains no known placeholders, captions are appended at the end.
+    """
+    modified = text
+    any_replaced = False
+    for image_id, caption in captions.items():
+        placeholder = format_image_placeholder(image_id)
+        if placeholder in modified:
+            modified = modified.replace(
+                placeholder, f"{placeholder}\n[图片描述: {caption}]"
+            )
+            any_replaced = True
+
+    if not any_replaced and captions:
+        # Fallback: append all captions at end of text
+        suffix = "\n\n".join(
+            f"[图片描述: {c}]" for c in captions.values()
+        )
+        modified = f"{modified.rstrip()}\n\n{suffix}"
+
+    return modified
 
 
 class ImageCaptioner(BaseTransform):
@@ -177,11 +204,18 @@ class ImageCaptioner(BaseTransform):
             else:
                 unprocessed.append(image_id)
 
+        # ── Inject captions into chunk.text for retrieval ─────────────
+        # Spec recommends replacing / appending captions at the image
+        # placeholder position so they flow into dense embedding + BM25.
+        retrieval_text = chunk.text
         if captions:
             existing = md.get("image_captions")
             merged = dict(existing) if isinstance(existing, dict) else {}
             merged.update(captions)
             md["image_captions"] = merged
+            retrieval_text = _inject_captions_into_text(
+                chunk.text, captions
+            )
 
         if unprocessed:
             md["has_unprocessed_images"] = True
@@ -198,7 +232,7 @@ class ImageCaptioner(BaseTransform):
 
         return Chunk(
             id=chunk.id,
-            text=chunk.text,
+            text=retrieval_text,
             metadata=md,
             start_offset=chunk.start_offset,
             end_offset=chunk.end_offset,
