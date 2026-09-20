@@ -23,6 +23,7 @@
 | 11 | 测试隔离污染：单跑通过、全量失败 | **测试隔离（已修复）** |
 | 12 | eager import 让可插拔架构在依赖层面失效 | 架构分析（已记录） |
 | 13 | PDF 摄取失败：`markitdown` 缺少 PDF extra | **依赖缺陷（已修复）** |
+| 14 | 单元测试因构造函数副作用污染生产向量库 | **测试隔离（已修复）** |
 
 ---
 
@@ -639,6 +640,62 @@ pip install "markitdown[pdf]"           # 现在已由 pyproject 直接声明
 
 ---
 
+## 14. 单元测试因构造函数副作用污染生产向量库（已修复）
+
+**现象**
+
+`list_collections`（以及 MCP 工具）里出现了一个名为 `test` 的集合，而配置中从未定义过它，也没有人手动创建过任何集合。
+
+**定位过程**
+
+1. 最初的猜测是"后台有摄取任务或别的会话在操作同一个库" —— **排除**：没有任何并发操作
+2. 搜索测试套件中的 `persist_directory`，发现多个测试的 YAML fixture 写着
+   `persist_directory: ./data/db/chroma` + `collection_name: test`
+3. **但逐个核对后发现大部分是"无害的"**：
+   - `test_dense_retriever.py`、`test_sparse_retriever.py` 都注入了 `FakeVectorStore`，
+     那两个配置字符串**从未被真正使用**
+   - `test_chroma_store_roundtrip.py`、`test_image_storage.py`、`test_bm25_indexer_roundtrip.py`、
+     `test_file_integrity.py` 等**已正确使用 `tmp_path`**
+4. 最终锁定唯一真凶 —— `tests/unit/test_pipeline_progress.py:70-74`：
+
+```python
+def test_pipeline_constructor_does_not_require_on_progress() -> None:
+    settings = Settings.from_dict(yaml.safe_load(_MINIMAL_SETTINGS_YAML))
+    pipeline = IngestionPipeline(settings)        # 只是"构造对象"
+    assert pipeline is not None
+```
+
+**根因**
+
+**构造函数带副作用**：
+
+```
+IngestionPipeline(settings)
+  └→ pipeline.py:86            VectorUpserter(settings)
+      └→ chroma_store.py:66    chromadb.PersistentClient(path="./data/db/chroma")
+      └→ chroma_store.py:67    client.get_or_create_collection("test")   ← 写盘
+```
+
+`get_or_create_collection` 在集合不存在时会**创建**它。于是一个"只断言对象构造成功"的测试，
+**每次跑单元测试都会往生产向量库里写入一个 `test` 集合**。
+
+（同时它还会触碰 `data/db/ingestion_history.db`、`data/db/bm25/`、`data/images/` —— 这些是 REPO_ROOT 下的真实生产路径，但构造函数只创建目录、无可观察产物，因此只有 Chroma 集合暴露了问题。）
+
+**处理**
+
+1. 该测试改用 `tmp_path`：把 YAML 里的 `./data/db/chroma` 替换为临时目录
+2. 清理历史残留：删除已存在的 `test` 集合
+3. **验证**：清理后再跑一次全量单元测试，`test` 集合**不再出现**
+
+**可迁移的知识点**
+
+- **构造函数应当廉价**。"构造即创建外部资源（集合 / 文件 / 连接）"会让所有只需要一个实例的代码 —— 包括测试 —— 都产生副作用
+- 判断测试是否会污染，**不能只看配置文件里的路径字符串**，要看它是否真的被用于实例化真实对象；注入了 Fake 的不会
+- **看起来无副作用的测试也可能写盘**（`assert obj is not None` 就足以触发）
+- 排查数据污染时，先问"**谁写的**"，再看"写了什么"：把嫌疑范围从"所有相关文件"收敛到"真正实例化真实对象的那个"
+
+---
+
 ## 附：这些问题对应的知识域
 
 （与项目自带学习体系的 `D1`–`D10` 知识域对应，便于串讲）
@@ -655,3 +712,4 @@ pip install "markitdown[pdf]"           # 现在已由 pyproject 直接声明
 | 11 | D9 测试策略与工程化 |
 | 12 | D6 可插拔架构 · D9 测试策略 |
 | 13 | D7 PDF 解析 · D9 工程化（依赖与打包） |
+| 14 | D9 测试策略 · D2 存储层协同 |

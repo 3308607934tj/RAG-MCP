@@ -67,9 +67,19 @@ def test_progress_callback_type_hint() -> None:
     assert calls == [("test", 1, 10)]
 
 
-def test_pipeline_constructor_does_not_require_on_progress() -> None:
-    """Verify pipeline accepts no on_progress parameter at init time."""
-    settings = Settings.from_dict(yaml.safe_load(_MINIMAL_SETTINGS_YAML))
+def test_pipeline_constructor_does_not_require_on_progress(tmp_path) -> None:
+    """Verify pipeline accepts no on_progress parameter at init time.
+
+    NOTE: constructing IngestionPipeline instantiates its real collaborators,
+    and ChromaStore.__init__ calls get_or_create_collection(). With the
+    original relative path that call wrote a stray `test` collection into the
+    production database (see REPRODUCTION_NOTES.md #14), so the vector store is
+    redirected to a temp dir here.
+    """
+    raw = _MINIMAL_SETTINGS_YAML.replace(
+        "./data/db/chroma", str(tmp_path / "chroma")
+    )
+    settings = Settings.from_dict(yaml.safe_load(raw))
     pipeline = IngestionPipeline(settings)
     assert pipeline is not None
 

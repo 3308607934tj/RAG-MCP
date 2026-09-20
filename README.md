@@ -22,7 +22,7 @@
 
 ### 复刻排错记录
 
-[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **13 个真实问题**，每条按
+[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **14 个真实问题**，每条按
 **现象 → 定位过程 → 根因 → 处理 → 可迁移的知识点**组织，保留报错原文与代码行号，覆盖：
 
 TLS 后端与代理配置 · Windows 环境隔离 · 文档与实现不符 · 可观测性覆盖缺口 ·
