@@ -139,11 +139,22 @@ class PdfLoader(BaseLoader):
         except ImportError as exc:
             raise ImportError(
                 "PDF loader requires 'markitdown'. "
-                "Install it with: pip install markitdown"
+                'Install it with: pip install "markitdown[pdf]"'
             ) from exc
 
         converter = MarkItDown()
-        result = converter.convert(path)
+        try:
+            result = converter.convert(path)
+        except Exception as exc:  # noqa: BLE001 - add an actionable hint
+            # MarkItDown delegates PDF parsing to the optional 'pdfminer-six'
+            # and 'pdfplumber' packages (the 'pdf' extra). Without them the raw
+            # library error carries no hint, so wrap it with instructions.
+            raise RuntimeError(
+                "PDF text extraction failed. MarkItDown needs its optional PDF "
+                "dependencies; install them with:\n"
+                '    pip install "markitdown[pdf]"\n'
+                f"Original error: {type(exc).__name__}: {exc}"
+            ) from exc
         return result.text_content
 
     @staticmethod

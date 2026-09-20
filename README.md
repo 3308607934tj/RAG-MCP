@@ -22,7 +22,7 @@
 
 ### 复刻排错记录
 
-[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **12 个真实问题**，每条按
+[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **13 个真实问题**，每条按
 **现象 → 定位过程 → 根因 → 处理 → 可迁移的知识点**组织，保留报错原文与代码行号，覆盖：
 
 TLS 后端与代理配置 · Windows 环境隔离 · 文档与实现不符 · 可观测性覆盖缺口 ·
@@ -121,7 +121,7 @@ Agent 会自动引导你完成全部配置流程。
 
 ```bash
 pip install -e .
-pip install -e ".[dev]"  # 包含测试依赖
+pip install -e ".[dev,pdf-images]"  # dev=测试依赖；pdf-images=pypdf（PDF 质量门禁与图片抽取需要）
 ```
 
 #### 3.2 配置 settings.yaml

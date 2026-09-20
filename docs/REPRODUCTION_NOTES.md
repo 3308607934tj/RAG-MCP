@@ -22,6 +22,7 @@
 | 10 | LLM 重排"看起来没生效"的误判 | 排错方法 |
 | 11 | 测试隔离污染：单跑通过、全量失败 | **测试隔离（已修复）** |
 | 12 | eager import 让可插拔架构在依赖层面失效 | 架构分析（已记录） |
+| 13 | PDF 摄取失败：`markitdown` 缺少 PDF extra | **依赖缺陷（已修复）** |
 
 ---
 
@@ -551,6 +552,93 @@ ingestion/__init__.py:9                        from .embedding import BatchProce
 
 ---
 
+## 13. PDF 摄取失败：`markitdown` 缺少 PDF extra（已修复）
+
+**现象**
+
+在 Dashboard「摄取管理」上传任意 PDF，管线跑完但报错，消息里只有一句无提示的提取失败：
+
+```
+失败：<文件名> — <底层库异常>
+```
+
+而同样流程摄取 `.md` 文件一切正常。
+
+**定位过程**
+
+1. **先缩小范围**：Markdown 摄取此前已成功 6 篇 → 说明管线本身没问题，问题在 **PDF 专用分支**
+2. **列出该分支的两个依赖**：
+   - `MarkItDown` —— 负责 PDF → Markdown 的**文字提取**（`pdf_loader.py:138`）
+   - `pypdf` —— 负责**抽图片**（`pdf_loader.py:214`）
+3. **检查实际安装情况**：
+
+   | 包 | 状态 |
+   |---|---|
+   | `markitdown 0.1.7` | ✅ |
+   | `pypdf` | ✅ |
+   | **`pdfminer-six`** | ❌ **未安装** |
+   | **`pdfplumber`** | ❌ **未安装** |
+
+4. **查 `markitdown` 的 METADATA**，发现 PDF 支持被放在 **extra** 里：
+
+   ```
+   Provides-Extra: pdf
+   Requires-Dist: pdfminer-six>=20251230; extra == 'pdf'
+   Requires-Dist: pdfplumber>=0.11.9;   extra == 'pdf'
+   ```
+
+5. **对照 `pyproject.toml:21`** —— 只写了 `markitdown>=0.1.0`，**不带 extra**
+
+**根因**
+
+依赖声明不完整。按 `pyproject.toml` 安装后，`markitdown` 能 `import`，但**没有能力解析 PDF**。
+
+而 `pdf_loader.py:137-147` 只对 `import` 做了保护，**没有保护 `.convert()`**：
+
+```python
+try:
+    from markitdown import MarkItDown
+except ImportError as exc:                      # ← 只保护了这里
+    raise ImportError("...Install it with: pip install markitdown")
+
+converter = MarkItDown()
+result = converter.convert(path)                # ← 真正的失败点，异常裸奔
+```
+
+于是用户看到的是底层库的原始异常，**没有任何可操作提示** —— 这是一次典型的"错误处理不完整导致排错成本翻倍"。
+
+**处理**
+
+| # | 改动 | 文件 |
+|---|------|------|
+| 1 | 依赖声明补上 extra：`markitdown>=0.1.0` → `markitdown[pdf]>=0.1.0` | `pyproject.toml` |
+| 2 | 把 `.convert()` 也包进 try/except，失败时提示 `pip install "markitdown[pdf]"` 并附上原始错误类型与信息 | `src/libs/loader/pdf_loader.py` |
+| 3 | README 的安装命令补上 `pdf-images` extra（见下方附带发现） | `README.md` |
+
+即时解封：`pip install "markitdown[pdf]"`
+
+> ⚠️ 不要用 `markitdown[all]` —— 它会拉进 Azure AI SDK、YouTube 转录、pydub 等大量无关依赖。只需要 `[pdf]`。
+
+**附带发现：PDF 还需要 `pypdf`，但 README 没提**
+
+摄取前的**质量门禁**（`quality_check`，对 PDF 生效）会调用 pypdf 抽样前几页，缺它时抛 `ImportError` 导致摄取失败。而 `pypdf` 被放在 `pdf-images` extra 里，README 的安装命令却是 `pip install -e ".[dev]"` —— **不含该 extra**。
+
+所以要"按文档装完就能摄 PDF"，需要两个条件同时成立：
+
+```bash
+pip install -e ".[dev,pdf-images]"      # pypdf
+pip install "markitdown[pdf]"           # 现在已由 pyproject 直接声明
+```
+
+**可迁移的知识点**
+
+- **extra 依赖是"装上了却不能用"的常见陷阱**：`pip install X` 成功 **≠** X 的全部功能可用
+- 报错缺少可操作提示时，**先去看依赖包 METADATA 里的 extra 列表**
+- 包装第三方异常时**必须保留原始错误类型与信息**，不要吞掉 —— 否则排查成本成倍上升
+- 一个功能（PDF）的可用性可能**分散在多个依赖声明处**（base deps / 各 extra / 文档），任何一处漏掉都会表现为"功能不可用"
+
+---
+
 ## 附：这些问题对应的知识域
 
 （与项目自带学习体系的 `D1`–`D10` 知识域对应，便于串讲）
@@ -566,3 +654,4 @@ ingestion/__init__.py:9                        from .embedding import BatchProce
 | 10 | D4 Rerank 机制 |
 | 11 | D9 测试策略与工程化 |
 | 12 | D6 可插拔架构 · D9 测试策略 |
+| 13 | D7 PDF 解析 · D9 工程化（依赖与打包） |
