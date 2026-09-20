@@ -11,21 +11,23 @@ request = json.dumps(
         "method": "tools/call",
         "params": {
             "name": "query_knowledge_hub",
-            "arguments": {"query": "李子昊参加了什么比赛", "top_k": 5},
+            "arguments": {"query": "VS Code 怎么接入 MCP", "top_k": 5},
         },
     },
     ensure_ascii=False,
 ) + "\n"
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 env = os.environ.copy()
-env["PYTHONPATH"] = "D:/MODULAR-RAG-MCP-SERVER/src"
+env["PYTHONPATH"] = os.path.join(REPO_ROOT, "src")
 
 proc = subprocess.Popen(
-    ["D:/MODULAR-RAG-MCP-SERVER/.venv/Scripts/python.exe", "-m", "mcp_server.server"],
+    [sys.executable, "-m", "mcp_server.server"],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
-    cwd="D:/MODULAR-RAG-MCP-SERVER",
+    cwd=REPO_ROOT,
     env=env,
 )
 stdout, stderr = proc.communicate(input=request.encode("utf-8"), timeout=60)

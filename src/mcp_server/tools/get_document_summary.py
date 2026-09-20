@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 
 from libs.vector_store import VectorStoreFactory, VectorStoreSettings
@@ -46,6 +47,16 @@ def get_document_summary(arguments: Dict[str, Any]) -> Dict[str, Any]:
     if len(summary) > 240:
         summary = summary[:240] + "..."
     tags_raw = metadata.get("tags")
+    if isinstance(tags_raw, str):
+        # Chroma only supports scalar metadata, so list values are stored as
+        # JSON strings (see ChromaStore._sanitize_metadata). Decode them back.
+        try:
+            decoded = json.loads(tags_raw)
+        except (json.JSONDecodeError, TypeError):
+            decoded = None
+        if isinstance(decoded, list):
+            tags_raw = decoded
+
     tags: List[str]
     if isinstance(tags_raw, list):
         tags = [str(item) for item in tags_raw]
