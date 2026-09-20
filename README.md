@@ -18,10 +18,11 @@
 | 2 | **可移植性** | MCP 冒烟测试脚本硬编码了作者机器的绝对路径，他人 clone 后无法运行；改为从脚本自身位置推导项目根 + 使用 `sys.executable` | `scripts/test_mcp_list.py`、`scripts/test_mcp_encoding.py` |
 | 3 | **测试补全** | 三个 MCP 工具此前只覆盖 1 个；补齐 `query_knowledge_hub` → 取 `chunk_id` → `get_document_summary` 的链式验证 | `scripts/test_mcp_list.py` |
 | 4 | **缺陷定位** | `persist_directory` 相对路径依赖进程工作目录，MCP 客户端以其他目录启动时会**静默查到空库**（无任何报错） | 见排错记录第 07 条 |
+| 5 | **缺陷修复** | 测试隔离污染：`test_image_captioner_fallback.py` 在模块级覆盖 `sys.modules` 且从不还原，导致**收集顺序变化时 10 个测试连带失败**；改为快照还原后单元测试 **341 passed / 1 skipped** | `tests/unit/test_image_captioner_fallback.py` |
 
 ### 复刻排错记录
 
-[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **10 个真实问题**，每条按
+[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **12 个真实问题**，每条按
 **现象 → 定位过程 → 根因 → 处理 → 可迁移的知识点**组织，保留报错原文与代码行号，覆盖：
 
 TLS 后端与代理配置 · Windows 环境隔离 · 文档与实现不符 · 可观测性覆盖缺口 ·

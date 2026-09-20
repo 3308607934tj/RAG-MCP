@@ -18,6 +18,18 @@ import yaml
 _SRC = Path(__file__).resolve().parents[2] / "src"
 
 # ── Build a minimal ingestion.transform namespace ────────────────────
+# These injections are needed ONLY while image_captioner is exec'd below.
+# Snapshot the real entries first so they can be restored afterwards:
+# leaving the fakes in sys.modules breaks other test modules that resolve
+# these names later (see docs/REPRODUCTION_NOTES.md, issue 11).
+_INJECTED_KEYS = (
+    "ingestion",
+    "ingestion.transform",
+    "ingestion.transform.base_transform",
+    "ingestion.transform.image_captioner",
+)
+_SAVED_MODULES = {key: sys.modules.get(key) for key in _INJECTED_KEYS}
+
 # Create ingestion package (no eager imports)
 _ingestion = ModuleType("ingestion")
 _ingestion.__path__ = [str(_SRC / "ingestion")]
@@ -46,6 +58,13 @@ _ic_spec = importlib.util.spec_from_file_location(
 _ic_mod = importlib.util.module_from_spec(_ic_spec)
 sys.modules["ingestion.transform.image_captioner"] = _ic_mod
 _ic_spec.loader.exec_module(_ic_mod)
+
+# Restore the real modules: the fakes were only needed for the exec above.
+for _key, _original in _SAVED_MODULES.items():
+    if _original is None:
+        sys.modules.pop(_key, None)
+    else:
+        sys.modules[_key] = _original
 
 ImageCaptioner = _ic_mod.ImageCaptioner
 _inject_captions_into_text = _ic_mod._inject_captions_into_text

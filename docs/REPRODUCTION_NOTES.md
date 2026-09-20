@@ -20,6 +20,8 @@
 | 08 | RRF 分数"低且全部相同"并非 bug | 算法理解 |
 | 09 | Claude Code 桌面端工具列表里没有本服务器 | 客户端接入 |
 | 10 | LLM 重排"看起来没生效"的误判 | 排错方法 |
+| 11 | 测试隔离污染：单跑通过、全量失败 | **测试隔离（已修复）** |
+| 12 | eager import 让可插拔架构在依赖层面失效 | 架构分析（已记录） |
 
 ---
 
@@ -423,6 +425,132 @@ backend.rerank("VS Code 怎么接入 MCP", candidates)
 
 ---
 
+## 11. 测试隔离污染：单跑通过、全量失败（已修复）
+
+**现象**
+
+```
+pytest tests/unit -q
+→ 10 failed, 331 passed, 1 skipped
+```
+
+10 个失败**全部集中在** `tests/unit/test_document_chunker.py`，错误完全相同：
+
+```
+AttributeError: 'module' object at ingestion.chunking has no attribute 'chunking'
+```
+
+而单独跑该文件却是 **15 passed**。典型的"单跑通过、全量失败"。
+
+**定位过程**
+
+1. **先排除自身改动**：失败测试的导入路径是 `core.types` → `core.settings` → `ingestion.chunking` → `libs.splitter`，与本地适配改过的文件无关
+2. **排除 pytest 版本兼容**：`pyproject.toml` 声明 `pytest>=7.0.0`，实际装的是 9.1.1；但单跑通过说明不是版本行为差异
+3. **写诊断脚本**逐步复刻 `_pytest.monkeypatch.resolve()` 的逻辑 → 三步 `getattr` **全部成功**，证明解析逻辑本身没问题，问题在**模块状态**
+4. **搜索测试套件中对 `sys.modules` 的操作** → 发现 3 个文件在**模块级**直接覆盖 `sys.modules` 且从不还原
+5. **做三组对照实验**（见下）→ 预测全部命中，锁死因果
+
+**根因**
+
+`tests/unit/test_image_captioner_fallback.py` 在模块导入时执行（原始版本第 22-24 行）：
+
+```python
+_ingestion = ModuleType("ingestion")        # 造一个只有 __path__ 的假包
+_ingestion.__path__ = [str(_SRC / "ingestion")]
+sys.modules["ingestion"] = _ingestion       # 覆盖真包，且从不还原
+```
+
+pytest 在**收集阶段**就会导入所有测试模块，而文件名按字母序 `test_document_chunker.py`（d）**先于** `test_image_captioner_fallback.py`（i）：
+
+1. chunker 被导入时，真实 `ingestion` 包加载，`chunking` 属性挂在**真包对象**上
+2. 随后 captioner 把 `sys.modules["ingestion"]` 换成**假包**（假包上没有 `chunking`）
+3. 测试运行时，`monkeypatch.setattr("ingestion.chunking.document_chunker.SplitterFactory.create", ...)`：
+   - `importlib.import_module("ingestion")` → 拿到**假包**
+   - `getattr(假包, "chunking")` → AttributeError
+   - 兜底 `importlib.import_module("ingestion.chunking")` → 真子模块**早已在 `sys.modules`**，所以不报错
+   - pytest 于是在**旧的假父对象**上再取一次属性 → 抛出那个带路径注释的错误
+
+**对照实验（决定性）**
+
+| 组 | 命令 | 结果 |
+|---|------|------|
+| A | `pytest tests/unit/test_document_chunker.py -q` | 15 passed |
+| B | `pytest .../test_document_chunker.py .../test_image_captioner_fallback.py -q` | **10 failed, 16 passed** |
+| C | `pytest .../test_image_captioner_fallback.py .../test_document_chunker.py -q` | **26 passed** |
+
+**同一批测试、仅交换收集顺序，结果相反** —— 这是收集期 `sys.modules` 污染的铁证。
+
+C 组能通过的原因：假包先装好，之后 chunker 的 `from ingestion.chunking import ...` 会把**真子模块挂到假父对象上**，`getattr` 就成功了。这正好解释了为什么全量跑会失败（字母序 d 在 i 之前）。
+
+**处理**
+
+在 `test_image_captioner_fallback.py` 中改为**快照 + 还原**：注入前记录真实的 `sys.modules` 条目，`exec_module` 完成后还原。
+
+之所以不用"直接 pop"：`sys.modules["ingestion"] = 假包` 这一步会**丢掉真模块的引用**，只 pop 会导致后续任何 `import ingestion` 都要重新执行 `__init__.py`，白付一次重导入开销。快照还原则把真模块原样放回。
+
+结果：`10 failed, 331 passed` → **`341 passed, 1 skipped`**
+
+**可迁移的知识点**
+
+- **模块级修改 `sys.modules` 是测试隔离的反模式**，应使用 `monkeypatch.setitem(sys.modules, ...)`（自动还原）或手工快照还原
+- "单跑通过、全量失败"几乎总是指向**测试间状态污染**或**收集顺序依赖**
+- pytest 的收集阶段会导入所有测试模块 —— 模块级副作用发生在**任何测试运行之前**
+- 用**交换顺序的对照实验**锁死因果，而不是接受"符合污染特征"这类弱证据
+
+---
+
+## 12. eager import 让可插拔架构在依赖层面失效（已记录）
+
+**现象**
+
+第 11 条的对照实验里出现一个异常数据：同样的测试集合，只因收集顺序不同，耗时相差 **7 秒**。
+
+| 组 | 场景 | 耗时 |
+|---|------|------|
+| A / B | 真实导入 `ingestion` 包 | 8.5s |
+| C | 假 `ingestion` 包（跳过了 `__init__.py`） | **1.42s** |
+
+**定位过程**
+
+沿 `ingestion/__init__.py` 的导入链逐层下钻：
+
+```
+ingestion/__init__.py:9                        from .embedding import BatchProcessor, DenseEncoder, SparseEncoder
+└→ ingestion/embedding/dense_encoder.py:10     from libs.embedding import BaseEmbedding, EmbeddingFactory, EmbeddingSettings
+   └→ libs/embedding/__init__.py:56            from .huggingface_embedding import HuggingFaceEmbedding
+      └→ libs/embedding/huggingface_embedding.py:2   from sentence_transformers import SentenceTransformer
+         └→ torch（约 7 秒）
+```
+
+**根因**
+
+`libs/embedding/__init__.py` 在**模块级**导入了全部 6 个 provider，其中 `huggingface_embedding`
+第 2 行就是 `from sentence_transformers import SentenceTransformer`。
+
+后果：**只要 `import ingestion`（甚至只是 `import libs.embedding`），就必须加载 torch** ——
+哪怕配置里用的是 qwen / openai 这类纯 API provider，根本不碰本地模型。
+
+这也解释了第 11 条里那个 `sys.modules` hack 的**动机**：作者正是为了绕开这个强制的 7 秒 + torch 依赖，才去手工伪造命名空间。**表层 bug 背后是架构诱因。**
+
+**处理**
+
+本次仅记录，未改动（属架构级调整，风险与收益需单独评估）。可选的三层修法：
+
+| 层次 | 修法 | 收益 | 风险 |
+|------|------|------|------|
+| 表层 | 测试端快照还原（第 11 条已完成） | 消除测试间污染 | 低 |
+| 中层 | `ingestion/__init__.py` 改用 PEP 562 懒加载（模块级 `__getattr__`） | `import ingestion` 从 8.5s 降到秒级 | 中，需全量回归 |
+| 深层 | `libs/embedding/__init__.py` 懒加载各 provider | `sentence-transformers` 才真正成为**按需依赖** | 中 |
+
+**可迁移的知识点**
+
+- **工厂模式只解决了"运行时选择"，不解决"依赖加载"** —— 若 `__init__.py` 把全部实现 eager import，插件的依赖就变成了强制的
+- 插件式架构中，重依赖应放在 provider 模块内部延迟导入，或由工厂在实例化时才导入
+- **导入耗时是可量化的架构指标**：1.42s vs 8.5s 比任何"应该懒加载"的论断都有说服力
+- 遇到"为了绕开某问题而写的奇怪 hack"时，先问**为什么需要这个 hack**
+
+---
+
 ## 附：这些问题对应的知识域
 
 （与项目自带学习体系的 `D1`–`D10` 知识域对应，便于串讲）
@@ -436,3 +564,5 @@ backend.rerank("VS Code 怎么接入 MCP", candidates)
 | 06 | D2 存储层协同 · D5 Tool 注册机制 |
 | 07 | D6 配置系统 · D2 存储层协同 |
 | 10 | D4 Rerank 机制 |
+| 11 | D9 测试策略与工程化 |
+| 12 | D6 可插拔架构 · D9 测试策略 |
