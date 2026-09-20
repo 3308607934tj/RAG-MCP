@@ -18,19 +18,19 @@ import streamlit as st
 
 def main() -> None:
     st.set_page_config(
-        page_title="Modular RAG — Dashboard",
+        page_title="Modular RAG — 管理面板",
         page_icon="📊",
         layout="wide",
         initial_sidebar_state="expanded",
     )
 
     pages = [
-        st.Page("pages/overview.py", title="System Overview", icon="📋"),
-        st.Page("pages/data_browser.py", title="Data Browser", icon="🔍"),
-        st.Page("pages/ingestion_manager.py", title="Ingestion Manager", icon="📥"),
-        st.Page("pages/ingestion_traces.py", title="Ingestion Traces", icon="⏱️"),
-        st.Page("pages/query_traces.py", title="Query Traces", icon="🔎"),
-        st.Page("pages/evaluation_panel.py", title="Evaluation", icon="📈"),
+        st.Page("pages/overview.py", title="系统总览", icon="📋"),
+        st.Page("pages/data_browser.py", title="数据浏览", icon="🔍"),
+        st.Page("pages/ingestion_manager.py", title="摄取管理", icon="📥"),
+        st.Page("pages/ingestion_traces.py", title="摄取追踪", icon="⏱️"),
+        st.Page("pages/query_traces.py", title="查询追踪", icon="🔎"),
+        st.Page("pages/evaluation_panel.py", title="评估面板", icon="📈"),
     ]
 
     nav = st.navigation(pages)

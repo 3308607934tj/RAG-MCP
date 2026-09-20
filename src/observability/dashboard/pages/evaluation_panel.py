@@ -15,6 +15,22 @@ from libs.evaluator.base_evaluator import EvaluatorSettings
 
 DEFAULT_TEST_SET = REPO_ROOT / "tests" / "fixtures" / "golden_test_set.json"
 
+# 指标键名 → 中文显示名（键名来自评估结果数据，仅用于展示）
+_METRIC_LABELS = {
+    "hit_rate": "命中率 (hit_rate)",
+    "mrr": "平均倒数排名 (mrr)",
+    "precision": "精确率 (precision)",
+    "recall": "召回率 (recall)",
+    "faithfulness": "忠实度 (faithfulness)",
+    "answer_relevancy": "答案相关性 (answer_relevancy)",
+    "context_precision": "上下文精确率 (context_precision)",
+    "context_recall": "上下文召回率 (context_recall)",
+}
+
+
+def _metric_label(key: str) -> str:
+    return _METRIC_LABELS.get(key, key)
+
 
 def _load_test_set(path: str) -> int:
     """Count test cases in a golden test set file."""
@@ -35,34 +51,34 @@ def _load_report(json_path: str) -> dict | None:
 
 
 def main() -> None:
-    st.title("Evaluation Panel")
-    st.caption("Run evaluation against golden test sets and review metrics.")
+    st.title("评估面板")
+    st.caption("针对黄金测试集运行评估并查看指标。")
 
     providers = EvaluatorFactory.list_providers()
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        provider = st.selectbox("Evaluator Provider", providers, index=0)
+        provider = st.selectbox("评估器", providers, index=0)
     with col2:
         test_set_default = str(DEFAULT_TEST_SET) if DEFAULT_TEST_SET.exists() else ""
         test_set_path = st.text_input(
-            "Golden Test Set Path",
+            "黄金测试集路径",
             value=test_set_default,
-            help="Path to JSON file with test_cases",
+            help="含 test_cases 字段的 JSON 文件路径",
         )
     with col3:
-        top_k = st.number_input("Top-K", min_value=1, value=10, max_value=100)
+        top_k = st.number_input("保留条数 Top-K", min_value=1, value=10, max_value=100)
 
     if test_set_path:
         count = _load_test_set(test_set_path)
-        st.caption(f"Test set contains **{count}** queries.")
+        st.caption(f"测试集包含 **{count}** 条查询。")
 
-    if st.button("Run Evaluation", type="primary", use_container_width=True):
+    if st.button("开始评估", type="primary", use_container_width=True):
         if not test_set_path or not os.path.isfile(test_set_path):
-            st.error(f"Test set not found: `{test_set_path}`")
+            st.error(f"测试集不存在：`{test_set_path}`")
             return
 
-        with st.spinner("Running evaluation..."):
+        with st.spinner("正在评估…"):
             try:
                 from observability.evaluation.eval_runner import EvalRunner
 
@@ -72,27 +88,29 @@ def main() -> None:
                 runner = EvalRunner(evaluator=evaluator)
                 report = runner.run(test_set_path)
 
-                st.success(f"Evaluation complete — {report.total_queries} queries")
+                st.success(f"评估完成 — 共 {report.total_queries} 条查询")
 
                 # Aggregate metrics
-                st.subheader("Aggregate Metrics")
+                st.subheader("汇总指标")
                 metric_cols = st.columns(4)
                 metric_keys = sorted(report.metrics.keys())
                 for i, k in enumerate(metric_keys):
                     with metric_cols[i % 4]:
-                        st.metric(k, f"{report.metrics[k]:.4f}")
+                        st.metric(_metric_label(k), f"{report.metrics[k]:.4f}")
 
                 # Per-query details
-                st.subheader("Per-Query Results")
+                st.subheader("逐条查询结果")
                 if report.per_query:
                     rows = []
                     for qr in report.per_query:
                         row = {
-                            "Query": str(qr.get("query", ""))[:80],
-                            "Retrieved": len(qr.get("retrieved_ids", [])),
-                            "Expected": len(qr.get("expected_ids", [])),
+                            "查询": str(qr.get("query", ""))[:80],
+                            "召回条数": len(qr.get("retrieved_ids", [])),
+                            "期望条数": len(qr.get("expected_ids", [])),
                         }
-                        row.update(qr.get("metrics", {}))
+                        row.update(
+                            {_metric_label(k): v for k, v in (qr.get("metrics") or {}).items()}
+                        )
                         rows.append(row)
 
                     if rows:
@@ -103,14 +121,14 @@ def main() -> None:
                         )
 
                 # Detailed breakdown
-                with st.expander("Full Report JSON", expanded=False):
+                with st.expander("完整报告 JSON", expanded=False):
                     st.json(report.to_dict())
 
             except Exception as exc:
-                st.error(f"Evaluation failed: {exc}")
+                st.error(f"评估失败：{exc}")
 
     st.divider()
-    st.subheader("Historical Reports")
+    st.subheader("历史报告")
 
     reports_dir = REPO_ROOT / "logs" / "eval_reports"
     if reports_dir.exists():
@@ -124,15 +142,15 @@ def main() -> None:
                 report = _load_report(str(rf))
                 if report:
                     with st.expander(
-                        f"{rf.name} — {report.get('total_queries', '?')} queries"
+                        f"{rf.name} — {report.get('total_queries', '?')} 条查询"
                     ):
                         st.json(report, expanded=False)
         else:
-            st.caption("No historical reports found.")
+            st.caption("暂无历史报告。")
     else:
         st.caption(
-            "No historical reports yet. Run an evaluation to generate reports "
-            f"in `{reports_dir}`."
+            "暂无历史报告。执行一次评估即可在 "
+            f"`{reports_dir}` 生成。"
         )
 
 

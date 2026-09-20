@@ -67,24 +67,28 @@ class TraceService:
 
     @staticmethod
     def stage_label(slug: str) -> str:
-        """Human-readable label for internal stage names."""
+        """Human-readable label for internal stage names (中文)."""
         labels: Dict[str, str] = {
-            "integrity": "Integrity Check",
-            "load": "Document Load",
-            "split": "Text Split",
-            "transform": "Transform",
-            "transform_step": "Transform Step",
-            "encode": "Embedding Encode",
-            "store": "Vector/BF Store",
-            "image_store": "Image Store",
-            "pipeline_done": "Pipeline Done",
-            "query_rewrite": "Query Rewrite",
-            "dense_search": "Dense Search",
-            "sparse_search": "Sparse Search",
-            "fusion": "RRF Fusion",
-            "rerank": "Rerank",
-            "response_build": "Response Build",
-            "query_done": "Query Done",
+            "integrity": "完整性校验",
+            "quality_check": "质量门禁",
+            "load": "文档加载",
+            "split": "文本切分",
+            "transform": "内容转换",
+            "transform_step": "转换步骤",
+            "encode": "向量编码",
+            "store": "向量 / BM25 存储",
+            "image_store": "图片存储",
+            "pipeline_done": "流水线完成",
+            "pipeline_failed": "流水线失败",
+            "quality_rejected": "质量校验未通过",
+            "query_rewrite": "查询改写",
+            "dense_search": "Dense 向量检索",
+            "sparse_search": "Sparse 关键词检索",
+            "fusion": "RRF 融合",
+            "rerank": "重排序",
+            "response_build": "响应构建",
+            "query_done": "查询完成",
+            "query_failed": "查询失败",
         }
         return labels.get(slug, slug.replace("_", " ").title())
 

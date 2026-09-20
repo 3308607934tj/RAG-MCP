@@ -13,12 +13,12 @@ def _render_trace_list(svc: TraceService) -> None:
 
     if not traces:
         st.info(
-            "No ingestion traces found. Run an ingestion to generate trace data. "
-            "Traces are stored in `logs/traces.jsonl`."
+            "暂无摄取追踪记录。执行一次摄取即可生成追踪数据。"
+            "追踪数据保存在 `logs/traces.jsonl`。"
         )
         return
 
-    st.caption(f"{len(traces)} trace(s) found")
+    st.caption(f"共找到 {len(traces)} 条记录")
 
     for i, trace in enumerate(traces):
         started = trace.get("started_at", 0)
@@ -40,39 +40,39 @@ def _render_trace_list(svc: TraceService) -> None:
         with col1:
             st.write(f"**{display_name}**")
             if file_hash:
-                st.caption(f"Hash: `{file_hash[:16]}...`")
+                st.caption(f"哈希：`{file_hash[:16]}...`")
         with col2:
-            st.metric("Total Time (ms)", f"{total_ms:.1f}")
+            st.metric("总耗时 (ms)", f"{total_ms:.1f}")
         with col3:
             chunk_count = 0
             for s in stages:
                 if s.get("stage") == "pipeline_done":
                     chunk_count = s.get("chunk_count", 0)
                     break
-            st.metric("Chunks", chunk_count)
+            st.metric("分块数", chunk_count)
 
-        with st.expander("Stage Details", expanded=(i == 0)):
+        with st.expander("阶段详情", expanded=(i == 0)):
             stage_data = svc.extract_stage_times(stages)
             if stage_data:
                 df = pd.DataFrame(stage_data)
                 df = df.sort_values("elapsed_ms", ascending=True)
 
-                st.subheader("Stage Time Distribution")
+                st.subheader("各阶段耗时分布")
                 st.bar_chart(
                     df.set_index("stage")["elapsed_ms"],
                     horizontal=True,
                     use_container_width=True,
                 )
 
-                st.subheader("Stage Table")
+                st.subheader("阶段明细")
                 for s in stage_data:
                     st.caption(
                         f"**{s['stage']}** — {s['elapsed_ms']:.1f} ms"
-                        f" | raw: `{s['raw']}`"
+                        f" | 原始名：`{s['raw']}`"
                     )
 
             # Also show raw stage details
-            with st.expander("Raw Stage Data", expanded=False):
+            with st.expander("原始阶段数据", expanded=False):
                 for s in stages:
                     filtered = {k: v for k, v in s.items() if k not in ("timestamp",)}
                     st.json(filtered)
@@ -81,8 +81,8 @@ def _render_trace_list(svc: TraceService) -> None:
 
 
 def main() -> None:
-    st.title("Ingestion Traces")
-    st.caption("View ingestion history, stage breakdown, and performance analysis.")
+    st.title("摄取追踪")
+    st.caption("查看摄取历史、各阶段耗时与性能分析。")
 
     svc = TraceService()
     _render_trace_list(svc)

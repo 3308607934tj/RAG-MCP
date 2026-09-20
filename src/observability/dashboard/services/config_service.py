@@ -25,85 +25,85 @@ class ConfigService:
         s = self.settings
         return [
             {
-                "name": "LLM",
+                "name": "大语言模型",
                 "icon": "🤖",
                 "fields": {
-                    "Provider": s.llm.provider,
-                    "Model": s.llm.model,
-                    "Temperature": str(s.llm.temperature),
-                    "Max Tokens": str(s.llm.max_tokens),
+                    "服务商": s.llm.provider,
+                    "模型": s.llm.model,
+                    "温度": str(s.llm.temperature),
+                    "最大 Token 数": str(s.llm.max_tokens),
                 },
                 "status": "active" if s.llm.provider else "inactive",
             },
             {
-                "name": "Embedding",
+                "name": "向量模型",
                 "icon": "🧮",
                 "fields": {
-                    "Provider": s.embedding.provider,
-                    "Model": s.embedding.model,
-                    "Dimensions": str(s.embedding.dimensions),
+                    "服务商": s.embedding.provider,
+                    "模型": s.embedding.model,
+                    "向量维度": str(s.embedding.dimensions),
                 },
                 "status": "active" if s.embedding.provider else "inactive",
             },
             {
-                "name": "Vector Store",
+                "name": "向量库",
                 "icon": "🗄️",
                 "fields": {
-                    "Provider": s.vector_store.provider,
-                    "Persist Directory": s.vector_store.persist_directory,
-                    "Collection": s.vector_store.collection_name,
+                    "服务商": s.vector_store.provider,
+                    "持久化目录": s.vector_store.persist_directory,
+                    "集合名称": s.vector_store.collection_name,
                 },
                 "status": "active" if s.vector_store.provider else "inactive",
             },
             {
-                "name": "Retrieval",
+                "name": "检索参数",
                 "icon": "🔎",
                 "fields": {
-                    "Dense Top-K": str(s.retrieval.dense_top_k),
-                    "Sparse Top-K": str(s.retrieval.sparse_top_k),
-                    "Fusion Top-K": str(s.retrieval.fusion_top_k),
-                    "RRF K": str(s.retrieval.rrf_k),
+                    "Dense 召回数": str(s.retrieval.dense_top_k),
+                    "Sparse 召回数": str(s.retrieval.sparse_top_k),
+                    "融合召回数": str(s.retrieval.fusion_top_k),
+                    "RRF 常数 k": str(s.retrieval.rrf_k),
                 },
                 "status": "active",
             },
             {
-                "name": "Reranker",
+                "name": "重排序",
                 "icon": "📊",
                 "fields": {
-                    "Enabled": str(s.rerank.enabled),
-                    "Provider": s.rerank.provider,
-                    "Model": s.rerank.model or "(default)",
-                    "Top-K": str(s.rerank.top_k),
+                    "是否启用": str(s.rerank.enabled),
+                    "服务商": s.rerank.provider,
+                    "模型": s.rerank.model or "（默认）",
+                    "保留条数": str(s.rerank.top_k),
                 },
                 "status": "active" if s.rerank.enabled else "inactive",
             },
             {
-                "name": "Evaluation",
+                "name": "评估",
                 "icon": "📈",
                 "fields": {
-                    "Enabled": str(s.evaluation.enabled),
-                    "Provider": s.evaluation.provider,
-                    "Metrics": ", ".join(s.evaluation.metrics),
+                    "是否启用": str(s.evaluation.enabled),
+                    "服务商": s.evaluation.provider,
+                    "评估指标": ", ".join(s.evaluation.metrics),
                 },
                 "status": "active" if s.evaluation.enabled else "inactive",
             },
             {
-                "name": "Observability",
+                "name": "可观测性",
                 "icon": "👁️",
                 "fields": {
-                    "Log Level": s.observability.log_level,
-                    "Trace Enabled": str(s.observability.trace_enabled),
-                    "Trace File": s.observability.trace_file,
+                    "日志级别": s.observability.log_level,
+                    "是否开启追踪": str(s.observability.trace_enabled),
+                    "追踪文件": s.observability.trace_file,
                 },
                 "status": "active",
             },
             {
-                "name": "Vision LLM",
+                "name": "视觉模型",
                 "icon": "👁️‍🗨️",
                 "fields": {
-                    "Enabled": str(s.vision_llm.enabled),
-                    "Provider": s.vision_llm.provider,
-                    "Model": s.vision_llm.model,
+                    "是否启用": str(s.vision_llm.enabled),
+                    "服务商": s.vision_llm.provider,
+                    "模型": s.vision_llm.model,
                 },
                 "status": "active" if s.vision_llm.enabled else "inactive",
             },
@@ -114,21 +114,21 @@ class ConfigService:
         if s.ingestion is None:
             return None
         return {
-            "Chunk Size": str(s.ingestion.chunk_size),
-            "Chunk Overlap": str(s.ingestion.chunk_overlap),
-            "Splitter": s.ingestion.splitter,
-            "Batch Size": str(s.ingestion.batch_size),
-            "Chunk Refiner (LLM)": (
+            "分块大小": str(s.ingestion.chunk_size),
+            "分块重叠": str(s.ingestion.chunk_overlap),
+            "切分器": s.ingestion.splitter,
+            "批处理大小": str(s.ingestion.batch_size),
+            "分块精炼（LLM）": (
                 str(s.ingestion.chunk_refiner.use_llm)
                 if s.ingestion.chunk_refiner
                 else "N/A"
             ),
-            "Metadata Enricher (LLM)": (
+            "元数据增强（LLM）": (
                 str(s.ingestion.metadata_enricher.use_llm)
                 if s.ingestion.metadata_enricher
                 else "N/A"
             ),
-            "Image Captioner (Vision LLM)": (
+            "图片描述（视觉模型）": (
                 str(s.ingestion.image_captioner.use_vision_llm)
                 if s.ingestion.image_captioner
                 else "N/A"

@@ -75,15 +75,15 @@ def _load_stats() -> Dict[str, Any]:
 
 
 def main() -> None:
-    st.title("System Overview")
-    st.caption("Component configuration and data statistics for the Modular RAG system.")
+    st.title("系统总览")
+    st.caption("Modular RAG 系统的组件配置与数据统计。")
 
     cfg = ConfigService()
 
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("Component Configuration")
+        st.subheader("组件配置")
         cards = cfg.get_component_cards()
 
         # Display in rows of 2
@@ -102,36 +102,36 @@ def main() -> None:
                         unsafe_allow_html=True,
                     )
                     for label, value in card["fields"].items():
-                        st.caption(f"**{label}:** {value}")
+                        st.caption(f"**{label}：** {value}")
 
         # Ingestion config
         ingestion = cfg.get_ingestion_config()
         if ingestion:
-            st.subheader("Ingestion Configuration")
+            st.subheader("摄取配置")
             ingest_cols = st.columns(3)
             labels = list(ingestion.items())
             for i, (label, value) in enumerate(labels):
                 with ingest_cols[i % 3]:
-                    st.caption(f"**{label}:** {value}")
+                    st.caption(f"**{label}：** {value}")
 
     with col_right:
-        st.subheader("Data Statistics")
+        st.subheader("数据统计")
         stats = _load_stats()
 
-        st.metric("Chroma Entries", stats["chroma_entries"])
-        st.metric("BM25 Documents", stats["bm25_documents"])
-        st.metric("Images Stored", stats["images_stored"])
-        st.metric("Ingestion Records", stats["ingestion_records"])
+        st.metric("向量条目数", stats["chroma_entries"])
+        st.metric("BM25 文档数", stats["bm25_documents"])
+        st.metric("已存图片数", stats["images_stored"])
+        st.metric("摄取记录数", stats["ingestion_records"])
 
         st.divider()
 
-        st.subheader("Paths")
+        st.subheader("路径")
         try:
             s = cfg.settings
-            st.caption(f"**Vector Store:** `{s.vector_store.persist_directory}`")
-            st.caption(f"**Trace File:** `{s.observability.trace_file}`")
+            st.caption(f"**向量库：** `{s.vector_store.persist_directory}`")
+            st.caption(f"**追踪文件：** `{s.observability.trace_file}`")
         except Exception:
-            st.caption("Settings not available")
+            st.caption("配置不可用")
 
 
 main()
