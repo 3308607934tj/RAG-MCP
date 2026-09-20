@@ -4,8 +4,35 @@
 
 ---
 
+## ⚠️ 关于本仓库
+
+本仓库是 [kidoom/RAG-MCP](https://github.com/kidoom/RAG-MCP) 的**学习复刻**（基线提交 `8194ca2`），用于个人学习与工程实践记录。上游仓库未声明开源许可证，本仓库不用于分发或商业用途。
+
+复刻过程中完整搭建了运行环境并跑通全链路：环境隔离 → 配置加载 → 数据摄取 → 混合检索（Dense + BM25 + RRF 融合）→ LLM 重排 → MCP 三工具 → Dashboard → AI 客户端接入。
+
+### 我的改动
+
+| # | 类型 | 内容 | 涉及文件 |
+|---|------|------|----------|
+| 1 | **缺陷修复** | `get_document_summary` 的 `tags` **编解码不对称** —— 写侧 `ChromaStore._sanitize_metadata()` 把 list 序列化为 JSON 字符串（Chroma 的 metadata 只接受标量类型），读侧却未做反向解析，导致 MCP 客户端收到 `["[\"code\", \"mcp\", ...]"]` 这样的畸形单元素数组 | `src/mcp_server/tools/get_document_summary.py` |
+| 2 | **可移植性** | MCP 冒烟测试脚本硬编码了作者机器的绝对路径，他人 clone 后无法运行；改为从脚本自身位置推导项目根 + 使用 `sys.executable` | `scripts/test_mcp_list.py`、`scripts/test_mcp_encoding.py` |
+| 3 | **测试补全** | 三个 MCP 工具此前只覆盖 1 个；补齐 `query_knowledge_hub` → 取 `chunk_id` → `get_document_summary` 的链式验证 | `scripts/test_mcp_list.py` |
+| 4 | **缺陷定位** | `persist_directory` 相对路径依赖进程工作目录，MCP 客户端以其他目录启动时会**静默查到空库**（无任何报错） | 见排错记录第 07 条 |
+
+### 复刻排错记录
+
+[docs/REPRODUCTION_NOTES.md](docs/REPRODUCTION_NOTES.md) 记录了 **10 个真实问题**，每条按
+**现象 → 定位过程 → 根因 → 处理 → 可迁移的知识点**组织，保留报错原文与代码行号，覆盖：
+
+TLS 后端与代理配置 · Windows 环境隔离 · 文档与实现不符 · 可观测性覆盖缺口 ·
+序列化对称性 · 进程工作目录陷阱 · RRF 算法性质 · MCP 客户端接入 · 排错方法论
+
+---
+
 ## 📖 目录
 
+- [关于本仓库](#-关于本仓库)
+- [复刻排错记录](docs/REPRODUCTION_NOTES.md)
 - [项目概述](#-项目概述)
 - [快速开始](#-快速开始)
   - [项目架构可视化](#7-项目架构可视化)
